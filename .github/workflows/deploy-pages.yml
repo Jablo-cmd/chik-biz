@@ -28,10 +28,11 @@ jobs:
       - run: npm test
       - run: npm run build
         env:
-          # Public values (repository Settings → Secrets and variables → Actions → Variables).
-          # Leave unset to publish the demo-only build.
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          # Public values: the project URL and publishable key are shipped to every
+          # browser by design (data is protected by sign-in and row-level security).
+          # Repository variables, if set, take precedence. Never use a secret key here.
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://xtbqnmndrlkxelritzzn.supabase.co' }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Dns5Bn0XicE_xRWmi7p88g_N9wNwo3k' }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
