@@ -143,7 +143,12 @@ The repository includes two GitHub Actions workflows:
 
   One-time setup: **Settings → Pages → Source: GitHub Actions**. To include live mode, also add repository **variables** (not secrets — they are public) `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Without them the published site is demo-only. The site would be served at `https://<owner>.github.io/chik-biz/`.
 
-The demo has **not** been deployed yet.
+**Deployment status (21 Oct 2026):** the workflow ran successfully (build and deploy jobs both passed) for commit `d12557c`. The intended public address is `https://chikbiz.aurisnexus.co.za`, which goes live once the DNS record and the GitHub Pages custom-domain setting below are in place. Until then GitHub serves the site at `https://jablo-cmd.github.io/chik-biz/`.
+
+**Custom domain setup (one-time):**
+1. At the DNS provider for `aurisnexus.co.za`, add `CNAME  chikbiz  →  jablo-cmd.github.io`. Leave the existing MX/email records untouched.
+2. In GitHub, go to Settings → Pages → Custom domain, enter `chikbiz.aurisnexus.co.za` and save. Once the DNS check passes, tick **Enforce HTTPS**.
+3. In Supabase, go to Authentication → URL Configuration and set Site URL to `https://chikbiz.aurisnexus.co.za`. Add the same address under Redirect URLs.
 
 Any static host works. Serve the `dist/` folder produced by `npm run build`.
 
