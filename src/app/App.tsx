@@ -1,4 +1,5 @@
-import { AppProvider, useApp } from './AppContext';
+import { useApp } from './AppContext';
+import { Gate } from './Gate';
 import { Layout } from './Layout';
 import { useRoute } from './router';
 import { Dashboard } from '../pages/Dashboard';
@@ -72,8 +73,8 @@ function Routes() {
 
 export function App() {
   return (
-    <AppProvider>
+    <Gate>
       <Routes />
-    </AppProvider>
+    </Gate>
   );
 }

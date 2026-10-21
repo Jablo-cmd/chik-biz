@@ -5,7 +5,8 @@ import { navigate, setQuery, useRoute } from '../app/router';
 import * as cmd from '../domain/commands';
 import { allSaleViews, customerBalance } from '../domain/selectors';
 import type { Customer } from '../domain/types';
-import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorBanner, LinkButton, Modal, PageHeader, SearchBox, Stat, TextArea, TextInput } from '../ui/components';
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorBanner, LinkButton, Modal, PageHeader, SearchBox, Stat, TextArea, TextInput, useSingleFlight } from '../ui/components';
+import { newId } from '../data/store';
 import { statusBadge } from './Sales';
 
 export function CustomersPage() {
@@ -82,16 +83,17 @@ function CustomerForm({ customer, onClose }: { customer?: Customer; onClose: () 
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const set = (k: keyof cmd.CustomerInput) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
-  const submit = () => {
+  const { busy, guard } = useSingleFlight();
+  const submit = () => guard(async () => {
     setTouched(true);
     const res = customer
-      ? run((s, c) => cmd.updateCustomer(s, customer.id, f, c), 'Customer updated.')
-      : run((s, c) => cmd.createCustomer(s, f, c).state, 'Customer added.');
+      ? await run({ type: 'updateCustomer', id: customer.id, input: f }, 'Customer updated.')
+      : await run({ type: 'createCustomer', input: { ...f, id: newId() } }, 'Customer added.');
     if (!res.ok) return setError(res.error);
     onClose();
-  };
+  });
   return (
-    <Modal open onClose={onClose} title={customer ? `Edit ${customer.name}` : 'Add customer'} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{customer ? 'Save' : 'Add customer'}</Button></>}>
+    <Modal open onClose={onClose} title={customer ? `Edit ${customer.name}` : 'Add customer'} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit} disabled={busy}>{customer ? 'Save' : 'Add customer'}</Button></>}>
       <form className="form-grid" onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
         <ErrorBanner message={error} />
         <TextInput label="Name" required autoFocus value={f.name} onChange={set('name')} maxLength={80} error={touched && !f.name.trim() ? 'Enter a name.' : null} />
@@ -180,8 +182,8 @@ export function CustomerDetail({ id }: { id: string }) {
             ? 'The customer will be available for new sales again.'
             : `The customer will be hidden from new sales. Their sales history${balance > 0 ? ` and outstanding balance of ${money(balance)}` : ''} will be kept, and payments can still be recorded against existing sales.`
         }
-        onConfirm={() => {
-          const res = run((s, c) => cmd.setCustomerArchived(s, customer.id, !customer.archived, c), customer.archived ? 'Customer restored.' : 'Customer archived.');
+        onConfirm={async () => {
+          const res = await run({ type: 'setCustomerArchived', id: customer.id, archived: !customer.archived }, customer.archived ? 'Customer restored.' : 'Customer archived.');
           if (!res.ok) toast('error', res.error);
           setArchiving(false);
         }}

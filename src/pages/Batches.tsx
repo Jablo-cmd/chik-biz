@@ -21,7 +21,9 @@ import {
   TextArea,
   TextInput,
   currencySymbol,
+  useSingleFlight,
 } from '../ui/components';
+import { newId } from '../data/store';
 import { AdjustStockDialog } from './Inventory';
 
 export function BatchesPage() {
@@ -93,6 +95,7 @@ function BatchForm({ onClose, batch }: { onClose: () => void; batch?: PoultryBat
   const [notes, setNotes] = useState(batch?.notes ?? '');
   const [error, setError] = useState<string | null>(null);
   const symbol = currencySymbol(state.settings.currency, state.settings.locale);
+  const { busy, guard } = useSingleFlight();
 
   if (!batch && eligible.length === 0) {
     return (
@@ -104,29 +107,29 @@ function BatchForm({ onClose, batch }: { onClose: () => void; batch?: PoultryBat
     );
   }
 
-  const submit = () => {
+  const submit = () => guard(async () => {
     if (cost === null) return setError('Starting cost is not a valid amount.');
     if (batch) {
-      const res = run((s, c) => cmd.updateBatch(s, batch.id, { name, poultryType, startingCost: cost, notes }, c), 'Batch updated.');
+      const res = await run({ type: 'updateBatch', id: batch.id, input: { name, poultryType, startingCost: cost, notes } }, 'Batch updated.');
       if (!res.ok) return setError(res.error);
       return onClose();
     }
     const q = parseQty(initial);
     if (q === null) return setError('Enter the initial number of birds.');
-    const res = run(
-      (s, c) => cmd.createBatch(s, { name, poultryType, productId, startDate, initialQuantity: q, startingCost: cost, notes }, c).state,
+    const res = await run(
+      { type: 'createBatch', input: { id: newId(), name, poultryType, productId, startDate, initialQuantity: q, startingCost: cost, notes } },
       'Batch started.',
     );
     if (!res.ok) return setError(res.error);
     onClose();
-  };
+  });
 
   return (
     <Modal
       open
       onClose={onClose}
       title={batch ? `Edit ${batch.reference}` : 'Start a new batch'}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{batch ? 'Save' : 'Start batch'}</Button></>}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit} disabled={busy}>{batch ? 'Save' : 'Start batch'}</Button></>}
     >
       <form className="form-grid" onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
         <ErrorBanner message={error} />
@@ -215,8 +218,8 @@ export function BatchDetail({ id }: { id: string }) {
             ? `Closed batches cannot receive new events or sales. ${s.current > 0 ? `${s.current} birds are still recorded in this batch; they remain in “${product.name}” stock.` : ''}`
             : 'The batch will accept events and sales again.'
         }
-        onConfirm={() => {
-          const res = run((st, c) => cmd.setBatchStatus(st, batch.id, active ? 'closed' : 'active', c), active ? 'Batch closed.' : 'Batch reopened.');
+        onConfirm={async () => {
+          const res = await run({ type: 'setBatchStatus', id: batch.id, status: active ? 'closed' : 'active' }, active ? 'Batch closed.' : 'Batch reopened.');
           if (!res.ok) toast('error', res.error);
           setToggling(false);
         }}

@@ -1,7 +1,6 @@
 import { ArrowLeft, Ban, Banknote, Printer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useApp } from '../app/AppContext';
-import * as cmd from '../domain/commands';
 import { lineGross, lineTotal, saleView } from '../domain/selectors';
 import type { Cents } from '../domain/types';
 import { newId } from '../data/store';
@@ -115,8 +114,8 @@ export function SaleDetailPage({ id, print }: { id: string; print: boolean }) {
         title={`Void sale ${sale.number}?`}
         confirmLabel="Void sale"
         message="Voiding returns the items to stock and removes the sale from revenue. The record is kept for history and cannot be un-voided."
-        onConfirm={() => {
-          const res = run((st, c) => cmd.voidSale(st, sale.id, voidReason, c), 'Sale voided.');
+        onConfirm={async () => {
+          const res = await run({ type: 'voidSale', saleId: sale.id, reason: voidReason }, 'Sale voided.');
           if (!res.ok) return setVoidError(res.error);
           setVoiding(false);
         }}
@@ -137,11 +136,11 @@ function PaymentDialog({ saleId, balance, onClose }: { saleId: string; balance: 
   const [reference, setReference] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const submit = () => {
+  const submit = async () => {
     if (busy) return;
     if (amount === null || amount <= 0) return setError('Enter an amount greater than zero.');
     setBusy(true);
-    const res = run((s, c) => cmd.recordSalePayment(s, saleId, { id: paymentId, amount, method, date, reference }, c).state, 'Payment recorded.');
+    const res = await run({ type: 'recordSalePayment', saleId, input: { id: paymentId, amount, method, date, reference } }, 'Payment recorded.');
     if (!res.ok) {
       setBusy(false);
       return setError(res.error);

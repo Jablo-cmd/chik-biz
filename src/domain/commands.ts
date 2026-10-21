@@ -227,11 +227,11 @@ function validateProduct(state: AppState, input: ProductInput, existing?: Produc
 
 export function createProduct(
   state: AppState,
-  input: ProductInput & { openingStock: number; date: ISODate },
+  input: ProductInput & { openingStock: number; date: ISODate; id?: ID },
   ctx: Ctx,
 ): Result {
   const v = validateProduct(state, input);
-  const id = ctx.newId();
+  const id = input.id ?? ctx.newId();
   const product: Product = { ...v, id, archived: false, createdAt: stamp(ctx) };
   let movements = state.movements;
   if (input.openingStock !== 0) {
@@ -399,7 +399,7 @@ export interface BatchInput {
   notes: string;
 }
 
-export function createBatch(state: AppState, input: BatchInput, ctx: Ctx): Result {
+export function createBatch(state: AppState, input: BatchInput & { id?: ID }, ctx: Ctx): Result {
   if (!state.settings.batchTrackingEnabled) fail('Batch tracking is switched off in Settings.');
   const p = requireProduct(state, input.productId);
   if (!p.trackStock) fail('The batch product must track stock.');
@@ -411,7 +411,7 @@ export function createBatch(state: AppState, input: BatchInput, ctx: Ctx): Resul
   const startDate = requireDate(input.startDate, ctx, 'Start date');
   requireMoney(input.startingCost, 'Starting cost');
   const n = state.counters.batch + 1;
-  const id = ctx.newId();
+  const id = input.id ?? ctx.newId();
   const batch: PoultryBatch = {
     id,
     reference: `B-${String(n).padStart(3, '0')}`,
@@ -508,9 +508,9 @@ function validateCustomer(input: CustomerInput): CustomerInput {
   };
 }
 
-export function createCustomer(state: AppState, input: CustomerInput, ctx: Ctx): Result {
+export function createCustomer(state: AppState, input: CustomerInput & { id?: ID }, ctx: Ctx): Result {
   const v = validateCustomer(input);
-  const id = ctx.newId();
+  const id = input.id ?? ctx.newId();
   const c: Customer = { ...v, id, archived: false, createdAt: stamp(ctx) };
   const next = audit({ ...state, customers: [...state.customers, c] }, ctx, 'customer.create', `Customer "${v.name}" added`);
   return { state: next, id, duplicate: false };
@@ -834,9 +834,9 @@ function validateSupplier(input: SupplierInput): SupplierInput {
   };
 }
 
-export function createSupplier(state: AppState, input: SupplierInput, ctx: Ctx): Result {
+export function createSupplier(state: AppState, input: SupplierInput & { id?: ID }, ctx: Ctx): Result {
   const v = validateSupplier(input);
-  const id = ctx.newId();
+  const id = input.id ?? ctx.newId();
   const s: Supplier = { ...v, id, archived: false, createdAt: stamp(ctx) };
   const next = audit({ ...state, suppliers: [...state.suppliers, s] }, ctx, 'supplier.create', `Supplier "${v.name}" added`);
   return { state: next, id, duplicate: false };

@@ -36,8 +36,8 @@ export function SettingsPage() {
 function useSave() {
   const { run } = useApp();
   const [error, setError] = useState<string | null>(null);
-  const save = (patch: Partial<BusinessSettings>, message = 'Settings saved.') => {
-    const res = run((s, c) => cmd.updateSettings(s, patch, c), message);
+  const save = async (patch: Partial<BusinessSettings>, message = 'Settings saved.') => {
+    const res = await run({ type: 'updateSettings', patch }, message);
     setError(res.ok ? null : res.error);
     return res.ok;
   };
@@ -239,8 +239,33 @@ function ListsSection() {
   );
 }
 
+function LiveDataSection() {
+  const { state, live, refresh, toast } = useApp();
+  if (!live) return null;
+  return (
+    <Card title="Data">
+      <div className="alert alert-info">
+        Connected to the live business database. Records are shared by everyone with access to this business and are protected by sign-in and per-business access rules.
+      </div>
+      <p className="muted">
+        Signed in as {live.email} ({live.role}). Stored: {state.products.length} products, {state.sales.length} sales, {state.expenses.length} expenses, {state.customers.length} customers.
+      </p>
+      <div className="button-row">
+        <Button icon={<Download size={16} />} onClick={() => downloadFile(`chik-biz-export-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(state, null, 2), 'application/json')}>Download a copy (JSON)</Button>
+        <Button icon={<RotateCcw size={16} />} onClick={() => void refresh().then(() => toast('success', 'Data refreshed.'))}>Refresh from database</Button>
+      </div>
+    </Card>
+  );
+}
+
 function DataSection() {
-  const { state, store, toast } = useApp();
+  const { demoStore } = useApp();
+  return demoStore ? <DemoDataSection /> : <LiveDataSection />;
+}
+
+function DemoDataSection() {
+  const { state, demoStore, toast } = useApp();
+  const store = demoStore!;
   const [confirm, setConfirm] = useState<'reset' | 'clear' | 'import' | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);

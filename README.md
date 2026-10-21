@@ -4,8 +4,10 @@ Chik-Biz is a mobile-first web app for running a small poultry business day to d
 
 It is developed by **Auris Nexus Technologies (Pty) Ltd** as the technology provider. The business name and logo shown in the app belong to the poultry business using it. You can set them in **Settings**, and they default to a neutral placeholder.
 
-> **Status: working demonstration, not production software.**
-> All data is stored in the browser's local storage on one device. It is not a secure, shared or backed-up database. Sample data is **fictional** and is clearly labelled in the app.
+> **Status: working prototype, not yet production-hardened.**
+> The app has two modes, chosen on the start screen:
+> - **Live** — sign in and work with your business's data in Supabase (shared, access-controlled, server-validated).
+> - **Demo** — **fictional** sample data kept only in this browser, clearly labelled.
 
 ---
 
@@ -27,7 +29,7 @@ Other commands:
 | `npm run preview` | Serves the production build locally (http://localhost:4173) |
 | `npm run typecheck` | Type-checks only |
 
-No environment variables or backend credentials are needed to run the demo.
+No environment variables are needed for the demo. To enable live mode locally, copy `.env.example` to `.env.local` and fill in the project URL and **publishable** key (Supabase dashboard → Project Settings → API). These are public values; the service-role key must never be used.
 
 ---
 
@@ -78,19 +80,24 @@ src/
     selectors.ts  Derived values (stock, balances, payment status)
     reports.ts    Report, dashboard and CSV calculations
     seed.ts       Fictional demo data, built through the same commands
-  data/store.ts  Data-access boundary. LocalDemoStore = browser storage.
+  data/actions.ts  Every change as a typed action (shared by both modes)
+  data/store.ts    Demo mode: browser storage (LocalDemoStore)
+  data/supabase.ts Live mode: Supabase loading + one database function per action
   app/           App shell, navigation, hash router, context
   pages/         One file per module
   ui/            Shared components (forms, dialogs, tables…)
-supabase/      Proposed production schema and tests (not connected — see supabase/README.md)
+supabase/      Database schema, access rules, functions and tests (see supabase/README.md)
 ```
 
-- The UI changes data only through `store.apply(command)`, which re-reads the latest saved state, runs the command and saves the result in a single write. If a command throws, nothing is saved. Changes made in another browser tab are picked up.
+- The UI changes data only through `run(action)`.
+  - **Demo:** the action is applied with the domain commands and saved in one write. If it fails, nothing is saved.
+  - **Live:** the same validation runs first for instant feedback. Then the matching database function re-validates, locks the affected rows, writes an audit entry and is idempotent on the client-generated id. The app then reloads from the database.
 - Routing is hash-based (`#/sales/…`), so the build works on static hosting such as GitHub Pages with no rewrite rules. `vite.config.ts` uses `base: './'`.
 
-### Demo-mode limitations
+### Limitations
 
-- Data lives in one browser on one device. There are no user accounts, permissions or multi-user access.
+- **Live mode:** one business per account for now (the first one you belong to); no staff invitation screen yet; changes from other devices appear when you return to the app (no real-time push).
+- **Demo mode:** data lives in one browser on one device, with no user accounts or permissions.
 - Clearing browser data deletes everything. Use **Settings → Download backup** to keep a copy.
 - Browser storage is **not** secure storage. Do not enter sensitive personal information.
 - Backend-level guarantees (row locks, transactions across devices) only exist once a backend is connected.
@@ -103,7 +110,7 @@ supabase/      Proposed production schema and tests (not connected — see supab
 npm test
 ```
 
-There are 26 unit tests in `src/domain/domain.test.ts`. They cover:
+There are 56 unit tests. `src/data/supabase.test.ts` (30) checks every database call's argument names against the migrations, plus row mapping and error messages. `src/domain/domain.test.ts` (26) covers:
 
 - money and quantity parsing
 - sale totals, discounts and maximum-discount rules
@@ -134,7 +141,7 @@ The repository includes two GitHub Actions workflows:
 - **`.github/workflows/ci.yml`** runs tests and the production build on every push and pull request.
 - **`.github/workflows/deploy-pages.yml`** deploys `dist/` to **GitHub Pages**. It runs **only when started manually**: Actions → "Deploy demo to GitHub Pages" → *Run workflow*.
 
-  One-time setup: **Settings → Pages → Source: GitHub Actions**. The site would then be served at `https://<owner>.github.io/chik-biz/`.
+  One-time setup: **Settings → Pages → Source: GitHub Actions**. To include live mode, also add repository **variables** (not secrets — they are public) `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Without them the published site is demo-only. The site would be served at `https://<owner>.github.io/chik-biz/`.
 
 The demo has **not** been deployed yet.
 
@@ -142,14 +149,14 @@ Any static host works. Serve the `dist/` folder produced by `npm run build`.
 
 ---
 
-## Connecting a real backend
+## Backend (Supabase)
 
-See [`supabase/README.md`](supabase/README.md). It covers:
+Live mode uses the Supabase project `xtbqnmndrlkxelritzzn`. See [`supabase/README.md`](supabase/README.md) for:
 
-- a multi-tenant schema with row-level security
-- transactional, idempotent database functions for sales, payments, purchases and stock adjustments
-- local test scripts
-- step-by-step instructions for adding a `SupabaseStore` behind the existing data-access boundary
+- the schema, access rules and functions
+- what is applied and what is pending
+- the test scripts
+- the dashboard settings the owner must check (site URL, email confirmation, SMTP)
 
 Never place a service-role key in the frontend.
 

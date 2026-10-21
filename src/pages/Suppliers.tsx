@@ -7,7 +7,7 @@ import { parseQty } from '../domain/format';
 import { purchaseTotal, purchaseView } from '../domain/selectors';
 import type { Cents, Purchase, Supplier } from '../domain/types';
 import { newId } from '../data/store';
-import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorBanner, Modal, MoneyInput, PageHeader, SearchBox, SelectInput, Tabs, TextArea, TextInput, currencySymbol } from '../ui/components';
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorBanner, Modal, MoneyInput, PageHeader, SearchBox, SelectInput, Tabs, TextArea, TextInput, currencySymbol, useSingleFlight } from '../ui/components';
 import { statusBadge } from './Sales';
 
 type Tab = 'suppliers' | 'purchases';
@@ -105,9 +105,9 @@ function SupplierList() {
         tone={archiving?.archived ? 'primary' : 'danger'}
         confirmLabel={archiving?.archived ? 'Restore' : 'Archive'}
         message={archiving?.archived ? 'The supplier will be available for new purchases again.' : 'The supplier will be hidden from new purchases. Existing purchases and expenses keep their link.'}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!archiving) return;
-          const res = run((s, c) => cmd.setSupplierArchived(s, archiving.id, !archiving.archived, c), archiving.archived ? 'Supplier restored.' : 'Supplier archived.');
+          const res = await run({ type: 'setSupplierArchived', id: archiving.id, archived: !archiving.archived }, archiving.archived ? 'Supplier restored.' : 'Supplier archived.');
           if (!res.ok) toast('error', res.error);
           setArchiving(null);
         }}
@@ -127,15 +127,16 @@ function SupplierForm({ supplier, onClose }: { supplier?: Supplier; onClose: () 
   });
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof cmd.SupplierInput) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
-  const submit = () => {
+  const { busy, guard } = useSingleFlight();
+  const submit = () => guard(async () => {
     const res = supplier
-      ? run((s, c) => cmd.updateSupplier(s, supplier.id, f, c), 'Supplier updated.')
-      : run((s, c) => cmd.createSupplier(s, f, c).state, 'Supplier added.');
+      ? await run({ type: 'updateSupplier', id: supplier.id, input: f }, 'Supplier updated.')
+      : await run({ type: 'createSupplier', input: { ...f, id: newId() } }, 'Supplier added.');
     if (!res.ok) return setError(res.error);
     onClose();
-  };
+  });
   return (
-    <Modal open onClose={onClose} title={supplier ? `Edit ${supplier.name}` : 'Add supplier'} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>{supplier ? 'Save' : 'Add supplier'}</Button></>}>
+    <Modal open onClose={onClose} title={supplier ? `Edit ${supplier.name}` : 'Add supplier'} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit} disabled={busy}>{supplier ? 'Save' : 'Add supplier'}</Button></>}>
       <form className="form-grid" onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
         <ErrorBanner message={error} />
         <TextInput label="Supplier name" required autoFocus value={f.name} onChange={set('name')} maxLength={80} />
@@ -216,9 +217,9 @@ function PurchaseList() {
         tone="primary"
         confirmLabel="Receive into stock"
         message={receiving ? <>This adds {receiving.lines.map((l) => `${qty(l.quantity)} ${l.unit} of ${l.description}`).join(', ')} to stock. A purchase can only be received once.</> : ''}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!receiving) return;
-          const res = run((s, c) => cmd.confirmPurchase(s, receiving.id, c), 'Purchase received into stock.');
+          const res = await run({ type: 'confirmPurchase', id: receiving.id }, 'Purchase received into stock.');
           if (!res.ok) toast('error', res.error);
           setReceiving(null);
         }}
@@ -229,9 +230,9 @@ function PurchaseList() {
         title={`Cancel ${cancelling?.number}?`}
         confirmLabel="Cancel purchase"
         message="The draft will be marked as cancelled and kept for reference. Stock is not affected."
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!cancelling) return;
-          const res = run((s, c) => cmd.cancelPurchase(s, cancelling.id, c), 'Purchase cancelled.');
+          const res = await run({ type: 'cancelPurchase', id: cancelling.id }, 'Purchase cancelled.');
           if (!res.ok) toast('error', res.error);
           setCancelling(null);
         }}
@@ -269,7 +270,7 @@ function PurchaseForm({ purchase, onClose }: { purchase?: Purchase; onClose: () 
   const parsed = lines.map((l) => ({ productId: l.productId, quantity: parseQty(l.quantity), unitCost: l.unitCost }));
   const total = purchaseTotal(parsed.map((l) => ({ quantity: l.quantity ?? 0, unitCost: l.unitCost ?? 0 })));
 
-  const submit = () => {
+  const submit = async () => {
     if (busy) return;
     if (parsed.some((l) => !l.productId || l.quantity === null || l.unitCost === null)) {
       return setError('Every line needs a product, quantity and unit cost.');
@@ -284,11 +285,8 @@ function PurchaseForm({ purchase, onClose }: { purchase?: Purchase; onClose: () 
       lines: parsed.map((l) => ({ productId: l.productId, quantity: l.quantity!, unitCost: l.unitCost! })),
     };
     const res = purchase
-      ? run((s, c) => cmd.updatePurchase(s, input, c), 'Purchase updated.')
-      : run((s, c) => {
-          const r = cmd.createPurchase(s, input, c);
-          return receiveNow && !r.duplicate ? cmd.confirmPurchase(r.state, r.id, c) : r.state;
-        }, receiveNow ? 'Purchase recorded and received into stock.' : 'Purchase saved as draft.');
+      ? await run({ type: 'updatePurchase', input }, 'Purchase updated.')
+      : await run({ type: 'createPurchase', input, receive: receiveNow }, receiveNow ? 'Purchase recorded and received into stock.' : 'Purchase saved as draft.');
     setBusy(false);
     if (!res.ok) return setError(res.error);
     onClose();
@@ -341,9 +339,9 @@ function SupplierPaymentDialog({ purchase, onClose }: { purchase: Purchase; onCl
   const [date, setDate] = useState(today);
   const [reference, setReference] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const submit = () => {
+  const submit = async () => {
     if (amount === null || amount <= 0) return setError('Enter an amount greater than zero.');
-    const res = run((s, c) => cmd.recordPurchasePayment(s, purchase.id, { id, amount, method, date, reference }, c).state, 'Supplier payment recorded.');
+    const res = await run({ type: 'recordPurchasePayment', purchaseId: purchase.id, input: { id, amount, method, date, reference } }, 'Supplier payment recorded.');
     if (!res.ok) return setError(res.error);
     onClose();
   };

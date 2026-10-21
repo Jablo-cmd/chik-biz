@@ -424,3 +424,24 @@ export function currencySymbol(currency: string, locale: string): string {
     return currency;
   }
 }
+
+/**
+ * Wraps an async submit handler so repeated clicks while it is running are
+ * ignored (the server is also idempotent, but this avoids duplicate requests).
+ */
+export function useSingleFlight() {
+  const running = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const guard = async (fn: () => Promise<void> | void) => {
+    if (running.current) return;
+    running.current = true;
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
+  };
+  return { busy, guard };
+}

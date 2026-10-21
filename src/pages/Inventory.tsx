@@ -21,7 +21,9 @@ import {
   SelectInput,
   TextInput,
   currencySymbol,
+  useSingleFlight,
 } from '../ui/components';
+import { newId } from '../data/store';
 
 export function InventoryPage() {
   const { state, money, qty, run, toast } = useApp();
@@ -136,9 +138,9 @@ export function InventoryPage() {
             ? `"${archiving?.name}" will be available for sales and purchases again.`
             : `"${archiving?.name}" will be hidden from new sales and purchases. Its sales and stock history are kept.${archiving && stockOnHand(state, archiving.id) > 0 ? ` Note: ${stockOnHand(state, archiving.id)} ${archiving.unit} are still recorded as on hand.` : ''}`
         }
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!archiving) return;
-          const res = run((s, c) => cmd.setProductArchived(s, archiving.id, !archiving.archived, c), archiving.archived ? 'Product restored.' : 'Product archived.');
+          const res = await run({ type: 'setProductArchived', id: archiving.id, archived: !archiving.archived }, archiving.archived ? 'Product restored.' : 'Product archived.');
           if (!res.ok) toast('error', res.error);
           setArchiving(null);
         }}
@@ -178,7 +180,8 @@ function ProductForm({ open, onClose, product }: { open: boolean; onClose: () =>
     onClose();
   };
 
-  const submit = () => {
+  const { busy, guard } = useSingleFlight();
+  const submit = () => guard(async () => {
     setTouched(true);
     if (!name.trim() || price === null) return setError('Please fill in the required fields.');
     if (costRaw.trim() && cost === null) return setError('Cost price is not a valid amount.');
@@ -188,11 +191,11 @@ function ProductForm({ open, onClose, product }: { open: boolean; onClose: () =>
     if (open === null || open < 0) return setError('Opening stock must be zero or a positive number.');
     const input: cmd.ProductInput = { name, category, unit, sellingPrice: price, costPrice: costRaw.trim() ? cost : null, lowStockThreshold: th, trackStock };
     const res = product
-      ? run((st, c) => cmd.updateProduct(st, product.id, input, c), 'Product updated.')
-      : run((st, c) => cmd.createProduct(st, { ...input, openingStock: open, date: today }, c).state, 'Product added.');
+      ? await run({ type: 'updateProduct', id: product.id, input }, 'Product updated.')
+      : await run({ type: 'createProduct', input: { ...input, id: newId(), openingStock: open, date: today } }, 'Product added.');
     if (!res.ok) return setError(res.error);
     close();
-  };
+  });
 
   const unitOptions = s.units.map((u) => ({ value: u.name, label: `${u.name}${u.allowDecimal ? ' (decimals allowed)' : ''}` }));
   if (product && !s.units.some((u) => u.name === product.unit)) unitOptions.push({ value: product.unit, label: product.unit });
@@ -207,7 +210,7 @@ function ProductForm({ open, onClose, product }: { open: boolean; onClose: () =>
       footer={
         <>
           <Button onClick={close}>Cancel</Button>
-          <Button variant="primary" onClick={submit}>{product ? 'Save changes' : 'Add product'}</Button>
+          <Button variant="primary" onClick={submit} disabled={busy}>{product ? 'Save changes' : 'Add product'}</Button>
         </>
       }
     >
@@ -267,15 +270,16 @@ export function AdjustStockDialog({
     .filter((r) => r !== 'death' || product.unit === 'birds' || batchId)
     .map((r) => ({ value: r, label: cmd.REASON_LABELS[r] }));
 
-  const submit = () => {
+  const { busy, guard } = useSingleFlight();
+  const submit = () => guard(async () => {
     if (parsed === null || parsed <= 0) return setError('Enter a quantity greater than zero.');
-    const res = run(
-      (s, c) => cmd.adjustStock(s, { productId: product.id, batchId: batchId || null, direction, quantity: parsed, reason, date, note }, c),
+    const res = await run(
+      { type: 'adjustStock', input: { productId: product.id, batchId: batchId || null, direction, quantity: parsed, reason, date, note } },
       'Stock updated.',
     );
     if (!res.ok) return setError(res.error);
     onClose();
-  };
+  });
 
   return (
     <Modal
@@ -285,7 +289,7 @@ export function AdjustStockDialog({
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={submit}>Record {direction === 'in' ? 'addition' : 'reduction'}</Button>
+          <Button variant="primary" onClick={submit} disabled={busy}>Record {direction === 'in' ? 'addition' : 'reduction'}</Button>
         </>
       }
     >

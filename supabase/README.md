@@ -1,8 +1,7 @@
-# Backend plan (Supabase) — not yet connected
+# Supabase backend
 
 This folder holds the Supabase backend for Chik-Biz: the database schema, its
-access rules and the functions the app will call. The app itself still runs in
-browser demo mode until the frontend is connected.
+access rules and the functions the app calls in live mode.
 
 ## Status
 
@@ -16,7 +15,8 @@ The schema lives in `migrations/20261020000001…4_*.sql` and has been applied t
 | `update_settings`, `update_purchase`, `delete_expense` | **Not yet applied.** Their SQL contains `DELETE`, which needs the owner's confirmation through the connector. Alternatively, paste them from the migration files into the SQL editor. |
 | `tests/rls_smoke_test.sql` | 25/25 checks passed against a local PostgreSQL 16 with the stubbed `auth` schema |
 | Supabase security advisor | Only finding: signed-in users can call the `SECURITY DEFINER` API functions. This is intended — each one checks membership itself — and logged-out visitors (`anon`) can't call any of them. |
-| Frontend | Not yet connected — the app still runs in browser demo mode |
+| Live check on the real project | Passed inside a rolled-back transaction: repeated sale/payment ignored, oversell / double receipt / direct ledger writes rejected, batch counts correct, a second business cannot see or change the first |
+| Frontend | Connected: start screen offers live sign-in or the demo. Writes go through these functions only. |
 
 ## Design summary
 
@@ -49,12 +49,16 @@ psql -d chikbiz_test -v ON_ERROR_STOP=1 \
 psql -d chikbiz_test -f supabase/tests/rls_smoke_test.sql   # look for PASS / FAIL notices
 ```
 
-## Connecting the app (future work)
+## How the app connects
 
-1. **Confirm the project.** Confirm which Supabase project is the client's. Inspect its existing tables, auth providers and policies (for example with `supabase db pull`) before applying this migration. Apply it to a branch or staging project first.
-2. **Install the client.** Add `@supabase/supabase-js`. Put only the project URL and the **anon/publishable** key in `.env.local` (see `.env.example`). **Never** use the service-role key in frontend code or in any `VITE_*` variable.
-3. **Add a backend store.** Implement a `SupabaseStore` alongside `LocalDemoStore` in `src/data/store.ts`. Reads come from tables and views. Writes call the RPC functions above, passing the same client-generated ids the UI already creates.
-4. **Add sign-in and onboarding.** Add Supabase Auth sign-in and an onboarding flow that creates a business and its owner membership. That flow needs a trusted function, because `businesses` has no insert policy.
-5. **Keep the shared rules.** Keep `src/domain/commands.ts` validation in the UI for immediate feedback. The database functions remain the source of truth.
+- `src/data/supabase.ts` creates the client from `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`, loads the signed-in user's business (paging past the 1,000-row API limit) and maps each app action to one database function.
+- `src/data/supabase.test.ts` checks that every function call uses exactly the argument names declared in the migrations.
+- Sign-in uses Supabase Auth (email + password). A new user with no business is asked to create one and becomes its owner (`create_business`).
+- If a function is missing (e.g. the three pending ones), the app shows "This action is not available on the live database yet" instead of failing silently.
 
-GitHub Pages can host the frontend. It cannot run server code or keep secrets, so all trusted logic must live in the database functions or in Supabase Edge Functions.
+## Owner checklist (Supabase dashboard)
+
+1. **Authentication → URL Configuration:** set **Site URL** to the address the app is served from (for GitHub Pages: `https://<owner>.github.io/chik-biz/`) and add it under **Redirect URLs**, so confirmation and password-reset emails link back to the app.
+2. **Authentication → Providers → Email:** keep "Confirm email" on for production. The default Supabase mailer is rate-limited; configure custom SMTP before real users sign up.
+3. Apply the three pending functions (see Status).
+4. Never use the service-role key in the app.

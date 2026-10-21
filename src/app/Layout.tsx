@@ -15,7 +15,9 @@ import {
   X,
   XCircle,
   FlaskConical,
+  Database,
 } from 'lucide-react';
+import { supabaseConfigured } from '../data/supabase';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ConfirmDialog } from '../ui/components';
 import { useApp } from './AppContext';
@@ -88,9 +90,26 @@ function NavList({ section, onNavigate }: { section: string; onNavigate?: () => 
   );
 }
 
+function LiveBanner() {
+  const { live, switchMode } = useApp();
+  if (!live) return null;
+  return (
+    <div className="demo-banner live-banner" role="note">
+      <Database size={16} aria-hidden="true" />
+      <p>
+        <strong>Live data.</strong> Signed in as {live.email} ({live.role}). Changes are saved to the business database.
+      </p>
+      <button type="button" className="demo-banner-btn" onClick={() => void live.signOut().then(switchMode)}>
+        Sign out
+      </button>
+    </div>
+  );
+}
+
 function DemoBanner() {
-  const { state, store, toast } = useApp();
+  const { state, demoStore: store, toast, switchMode } = useApp();
   const [confirm, setConfirm] = useState(false);
+  if (!store) return <LiveBanner />;
   return (
     <div className="demo-banner" role="note">
       <FlaskConical size={16} aria-hidden="true" />
@@ -102,6 +121,11 @@ function DemoBanner() {
       <button type="button" className="demo-banner-btn" onClick={() => setConfirm(true)}>
         Reset sample data
       </button>
+      {supabaseConfigured && (
+        <button type="button" className="demo-banner-btn" onClick={switchMode}>
+          Leave demo
+        </button>
+      )}
       <ConfirmDialog
         open={confirm}
         onClose={() => setConfirm(false)}

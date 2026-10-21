@@ -60,7 +60,7 @@ export function NewSalePage({ customerId: presetCustomer }: { customerId: string
   const update = (key: string, patch: Partial<LineDraft>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
-  const submit = () => {
+  const submit = async () => {
     if (submitting.current) return;
     setError(null);
     if (computed.some((c) => !c.product)) return setError('Choose a product on every line, or remove empty lines.');
@@ -79,12 +79,7 @@ export function NewSalePage({ customerId: presetCustomer }: { customerId: string
       lines: computed.map((c) => ({ productId: c.l.productId, batchId: c.l.batchId || null, quantity: c.q!, unitPrice: c.l.unitPrice!, discount: c.l.discount ?? 0 })),
       payment: paid > 0 ? { amount: paid, method, reference } : null,
     };
-    let duplicate = false;
-    const res = run((s, ctx) => {
-      const r = cmd.createSale(s, input, ctx);
-      duplicate = r.duplicate;
-      return r.state;
-    }, 'Sale recorded.');
+    const res = await run({ type: 'createSale', input }, 'Sale recorded.');
     if (!res.ok) {
       submitting.current = false;
       setBusy(false);
@@ -92,7 +87,6 @@ export function NewSalePage({ customerId: presetCustomer }: { customerId: string
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    if (duplicate) console.info('Sale already recorded; no changes made.');
     // Replace history so "back" does not return to a spent form.
     history.replaceState(null, '', `#/sales/${saleId}`);
     window.dispatchEvent(new HashChangeEvent('hashchange'));

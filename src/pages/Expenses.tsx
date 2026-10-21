@@ -100,9 +100,9 @@ export function ExpensesPage() {
         title="Delete expense?"
         confirmLabel="Delete"
         message={deleting ? `“${deleting.description}” (${money(deleting.amount)} on ${date(deleting.date)}) will be removed from all totals and reports. The deletion is recorded in the activity log.` : ''}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!deleting) return;
-          const res = run((s, c) => cmd.deleteExpense(s, deleting.id, c), 'Expense deleted.');
+          const res = await run({ type: 'deleteExpense', id: deleting.id }, 'Expense deleted.');
           if (!res.ok) toast('error', res.error);
           setDeleting(null);
         }}
@@ -128,15 +128,15 @@ function ExpenseForm({ expense, onClose }: { expense?: Expense; onClose: () => v
   const catOptions = st.expenseCategories.map((c) => ({ value: c, label: c }));
   if (expense && !st.expenseCategories.includes(expense.category)) catOptions.push({ value: expense.category, label: expense.category });
 
-  const submit = () => {
+  const submit = async () => {
     if (busy) return;
     setTouched(true);
     if (!description.trim() || amount === null || amount <= 0) return setError('Please complete the required fields.');
     setBusy(true);
     const input: cmd.ExpenseInput = { date, category, description, amount, method, supplierId: supplierId || null, reference };
     const res = expense
-      ? run((s, c) => cmd.updateExpense(s, expense.id, input, c), 'Expense updated.')
-      : run((s, c) => cmd.createExpense(s, { ...input, id }, c).state, 'Expense recorded.');
+      ? await run({ type: 'updateExpense', id: expense.id, input }, 'Expense updated.')
+      : await run({ type: 'createExpense', input: { ...input, id } }, 'Expense recorded.');
     setBusy(false);
     if (!res.ok) return setError(res.error);
     onClose();
