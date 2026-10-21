@@ -1,18 +1,22 @@
 # Backend plan (Supabase) — not yet connected
 
-The current Chik-Biz prototype runs **entirely in the browser**. Nothing in this
-folder is used by the app today, and **nothing here has been applied to any
-Supabase project**.
-
-This folder is a reviewed starting point for the production backend.
+This folder holds the Supabase backend for Chik-Biz: the database schema, its
+access rules and the functions the app will call. The app itself still runs in
+browser demo mode until the frontend is connected.
 
 ## Status
 
+The schema lives in `migrations/20261020000001…4_*.sql` and has been applied to the Supabase project `xtbqnmndrlkxelritzzn` ("chik-biz"), with three functions still outstanding:
+
 | Item | Status |
 | --- | --- |
-| `migrations/20261020000000_initial_schema.sql` | Proposed schema. Executed only against a disposable local PostgreSQL 16 database with a stubbed `auth` schema. |
-| `tests/rls_smoke_test.sql` | Passed locally on 20 Oct 2026. Covers tenant isolation, duplicate-sale protection, oversell rejection, denial of direct ledger writes, single receipt of purchases and anonymous access. |
-| Supabase project | **Not connected.** The project URL supplied in the brief (`xtbqnmndrlkxelritzzn`) was not reachable from the development tooling, so its existing schema, auth settings and policies have **not** been inspected. Inspect them before applying anything. |
+| Tables, indexes, RLS, views (`…0001`) | Applied |
+| Private helpers (`…0002`) | Applied |
+| API functions except the three below (`…0003`, `…0004`) | Applied, in smaller batches because of connector timeouts |
+| `update_settings`, `update_purchase`, `delete_expense` | **Not yet applied.** Their SQL contains `DELETE`, which needs the owner's confirmation through the connector. Alternatively, paste them from the migration files into the SQL editor. |
+| `tests/rls_smoke_test.sql` | 25/25 checks passed against a local PostgreSQL 16 with the stubbed `auth` schema |
+| Supabase security advisor | Only finding: signed-in users can call the `SECURITY DEFINER` API functions. This is intended — each one checks membership itself — and logged-out visitors (`anon`) can't call any of them. |
+| Frontend | Not yet connected — the app still runs in browser demo mode |
 
 ## Design summary
 
@@ -38,7 +42,10 @@ You need a local PostgreSQL 15 or later. The Supabase CLI (`supabase start`) als
 createdb chikbiz_test
 psql -d chikbiz_test -v ON_ERROR_STOP=1 \
   -f supabase/tests/local_auth_stub.sql \
-  -f supabase/migrations/20261020000000_initial_schema.sql
+  -f supabase/migrations/20261020000001_schema_tables_rls.sql \
+  -f supabase/migrations/20261020000002_private_helpers.sql \
+  -f supabase/migrations/20261020000003_api_catalogue.sql \
+  -f supabase/migrations/20261020000004_api_transactions.sql
 psql -d chikbiz_test -f supabase/tests/rls_smoke_test.sql   # look for PASS / FAIL notices
 ```
 
